@@ -1,0 +1,10 @@
+This folder is reserved for cached telemetry data.  To use ensure that scripts
+run the commands:
+
+import fastf1
+fastf1.Cache.enable_cache(PATH_TO_CACHE)  
+
+It is recommended the user set the f1-cache environment variable and then use:
+
+import fastf1
+fastf1.Cache.enable_cache(os.environ['f1-cache'])  
