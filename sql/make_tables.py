@@ -12,7 +12,7 @@ Usage:
 You can import the SQLGenerator into your own script and call the
 commands or can run it from a CLI such as ipython (used for example).
 
->> python make_tables.py -u postgres -p password -y "[2022]" -cdb False -db formula1_2022 
+> python make_tables.py -u postgres -p password -y "[2022]" -cdb False -db formula1_2022 
 
 Arguments
 ---------
@@ -924,7 +924,7 @@ if __name__ == '__main__':
         path = args.cache_path
     else:
         path = None
-        
+
     f1gen = SQLGenerator(args.db_name, args.sql_user, args.sql_password, path=path, disable_cache=args.disable_cache)
     if args.create_database == True:
         print('Attempting to create database.')
