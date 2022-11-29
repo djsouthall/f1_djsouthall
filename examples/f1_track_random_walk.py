@@ -22,6 +22,7 @@ import fastf1
 import fastf1.plotting
 fastf1.Cache.enable_cache(os.environ['f1-cache'])  
 fastf1.plotting.setup_mpl()
+from matplotlib.backends.backend_pdf import PdfPages
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -209,7 +210,13 @@ def getSectorDict(year, limit_sectors=1000, selected_events=None, selected_secto
         
     return sector_dict
 
-
+def save_multi_image(filename):
+    pp = PdfPages(filename)
+    fig_nums = plt.get_fignums()
+    figs = [plt.figure(n) for n in fig_nums]
+    for fig in figs:
+        fig.savefig(pp, format='pdf')
+    pp.close()
 
 if __name__ == '__main__':
     plt.close('all')
@@ -223,110 +230,119 @@ if __name__ == '__main__':
     # Get relevant sector information
     sector_dict = getSectorDict(year, limit_sectors=limit_sectors, selected_events=selected_events, selected_sectors=selected_sectors)
 
+
     # Determine order to append sectors
     sector_order = np.random.choice(list(sector_dict.keys()), size=len(sector_dict.keys()), replace=False)
 
-    # Loop over sectors, transform and append them to end of track.
-    for i, sector_index in enumerate(sector_order):
-        #Ignoring rotations right now, but ultimately want to align segments to flow. 
-        if i == 0:
-            # Initiate coordinates and colors. 
-            x_all = sector_dict[sector_order[i]]['points'][:,:,0] - sector_dict[sector_order[i]]['points'][:,:,0][0] # Align end point to origin
-            y_all = sector_dict[sector_order[i]]['points'][:,:,1] - sector_dict[sector_order[i]]['points'][:,:,1][0] # Align end point to origin
-            c = np.ones(len(sector_dict[sector_order[i]]['points'][:,:,0]))*(sector_dict[sector_index]['event_index'] + 1)
-            
+    # Split into smaller tracks for fun
+    sector_orders = np.reshape(sector_order,(-1,6))
+
+    for sector_order in sector_orders:
+        # Loop over sectors, transform and append them to end of track.
+        for i, sector_index in enumerate(sector_order):
+            #Ignoring rotations right now, but ultimately want to align segments to flow. 
+            if i == 0:
+                # Initiate coordinates and colors. 
+                x_all = sector_dict[sector_order[i]]['points'][:,:,0] - sector_dict[sector_order[i]]['points'][:,:,0][0] # Align end point to origin
+                y_all = sector_dict[sector_order[i]]['points'][:,:,1] - sector_dict[sector_order[i]]['points'][:,:,1][0] # Align end point to origin
+                c = np.ones(len(sector_dict[sector_order[i]]['points'][:,:,0]))*(sector_dict[sector_index]['event_index'] + 1)
+                
+            else:
+                # Obtain untransformed new sector coordinates.  
+                x_new = sector_dict[sector_order[i]]['points'][:,:,0] - sector_dict[sector_order[i]]['points'][:,:,0][0] # Align initial point to origin
+                y_new = sector_dict[sector_order[i]]['points'][:,:,1] - sector_dict[sector_order[i]]['points'][:,:,1][0] # Align initial point to origin
+                
+                # Obtain track direction vectors for connecting points
+                old_vector = np.array([x_all[-1] , y_all[-1]]) - np.array([x_all[-2] , y_all[-2]])
+                old_vector = old_vector.flatten()/np.linalg.norm(old_vector)
+                
+                new_vector = np.array([x_new[1] , y_new[1]]) - np.array([x_new[0] , y_new[0]])
+                new_vector = new_vector.flatten()/np.linalg.norm(new_vector)
+
+                # Calculate angle between vectors, calculate rotation matrix values, rotate      
+                angle_rad = np.arctan2( new_vector[0]*old_vector[1] - new_vector[1]*old_vector[0], new_vector[0]*old_vector[0] + new_vector[1]*old_vector[1] )
+                cos, sin = np.cos(angle_rad), np.sin(angle_rad)
+
+                x_rotated = cos * x_new - sin * y_new + x_all[-1] # Rotate and shift to end of track
+                y_rotated = sin * x_new + cos * y_new + y_all[-1] # Rotate and shift to end of track
+
+                if False:
+                    # Sector by sector plotting for debugging.  Shows appending of sectors, and vectors. 
+                    fig = plt.figure()
+                    
+                    plt.plot(x_all, y_all, c='b',label='Previous Sectors')
+                    plt.quiver(x_all[-1], y_all[-1], old_vector[0], old_vector[1], color='b', label='Ending Vector for Previous Sectors')
+                    
+                    plt.plot(x_new + x_all[-1], y_new + y_all[-1], c='g',label='Sector %i'%(sector_order[i]))
+                    plt.quiver(x_new[0] + x_all[-1],  y_new[0] + y_all[-1], new_vector[0], new_vector[1], color='g', label='Beginning Vector for Sector %i'%(sector_order[i]))
+                    
+                    plt.plot(x_rotated, y_rotated, c='r',label='Rotated Sector %i'%(sector_order[i]))
+
+                    plt.legend()
+
+                    plt.show(fig)
+                
+                # Append
+                x_all = np.append(x_all, x_rotated)
+                y_all = np.append(y_all, y_rotated)
+                c = np.append(c, np.ones(len(sector_dict[sector_order[i]]['points'][:,:,0]))*(sector_dict[sector_index]['event_index'] + 1))
+                
+        # Reshape points for segment calculation.
+        points = np.array([x_all, y_all]).T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+        # Plot
+        fig = plt.figure()
+        ax = plt.gca()
+        plt.axis('equal')
+        plt.title('Random Walk Track\n{} Track Sectors Used from {} Unique Circuits'.format(len(sector_order), len(np.unique(c))))
+
+        cmap = cm.get_cmap('rainbow')
+        norm = plt.Normalize(vmin=0, vmax=max(c))
+        lc_comp = LineCollection(segments, norm=norm, cmap=cmap)
+        lc_comp.set_array(c)
+        lc_comp.set_linewidth(4)
+
+        plt.gca().add_collection(lc_comp)
+        ax.set_aspect('equal', 'box')
+        plt.tick_params(labelleft=False, left=False, labelbottom=False, bottom=False)
+
+        cbar = plt.colorbar(mappable=lc_comp, label="Source Race Index", boundaries=np.arange(-0.5, max(c) + 2))
+        cbar.set_ticks(np.arange(0, max(c) + 2))
+
+        
+        # Label start and finish locations
+
+        x_range = max(x_all) - min(x_all)
+        y_range = max(y_all) - min(y_all)
+        plt.xlim(min(x_all)-0.1*x_range, max(x_all)+0.1*x_range)
+        plt.ylim(min(y_all)-0.1*y_range, max(y_all)+0.1*y_range)
+
+        if x_all[0] > x_all[1]:
+            x_offset = -0.05*x_range
         else:
-            # Obtain untransformed new sector coordinates.  
-            x_new = sector_dict[sector_order[i]]['points'][:,:,0] - sector_dict[sector_order[i]]['points'][:,:,0][0] # Align initial point to origin
-            y_new = sector_dict[sector_order[i]]['points'][:,:,1] - sector_dict[sector_order[i]]['points'][:,:,1][0] # Align initial point to origin
-            
-            # Obtain track direction vectors for connecting points
-            old_vector = np.array([x_all[-1] , y_all[-1]]) - np.array([x_all[-2] , y_all[-2]])
-            old_vector = old_vector.flatten()/np.linalg.norm(old_vector)
-            
-            new_vector = np.array([x_new[1] , y_new[1]]) - np.array([x_new[0] , y_new[0]])
-            new_vector = new_vector.flatten()/np.linalg.norm(new_vector)
-
-            # Calculate angle between vectors, calculate rotation matrix values, rotate      
-            angle_rad = np.arctan2( new_vector[0]*old_vector[1] - new_vector[1]*old_vector[0], new_vector[0]*old_vector[0] + new_vector[1]*old_vector[1] )
-            cos, sin = np.cos(angle_rad), np.sin(angle_rad)
-
-            x_rotated = cos * x_new - sin * y_new + x_all[-1] # Rotate and shift to end of track
-            y_rotated = sin * x_new + cos * y_new + y_all[-1] # Rotate and shift to end of track
-
-            if False:
-                # Sector by sector plotting for debugging.  Shows appending of sectors, and vectors. 
-                fig = plt.figure()
-                
-                plt.plot(x_all, y_all, c='b',label='Previous Sectors')
-                plt.quiver(x_all[-1], y_all[-1], old_vector[0], old_vector[1], color='b', label='Ending Vector for Previous Sectors')
-                
-                plt.plot(x_new + x_all[-1], y_new + y_all[-1], c='g',label='Sector %i'%(sector_order[i]))
-                plt.quiver(x_new[0] + x_all[-1],  y_new[0] + y_all[-1], new_vector[0], new_vector[1], color='g', label='Beginning Vector for Sector %i'%(sector_order[i]))
-                
-                plt.plot(x_rotated, y_rotated, c='r',label='Rotated Sector %i'%(sector_order[i]))
-
-                plt.legend()
-
-                plt.show(fig)
-            
-            # Append
-            x_all = np.append(x_all, x_rotated)
-            y_all = np.append(y_all, y_rotated)
-            c = np.append(c, np.ones(len(sector_dict[sector_order[i]]['points'][:,:,0]))*(sector_dict[sector_index]['event_index'] + 1))
-            
-    # Reshape points for segment calculation.
-    points = np.array([x_all, y_all]).T.reshape(-1, 1, 2)
-    segments = np.concatenate([points[:-1], points[1:]], axis=1)
-
-    # Plot
-    fig = plt.figure()
-    ax = plt.gca()
-    plt.axis('equal')
-    plt.title('Random Walk Track\n{} Track Sectors Used from {} Unique Circuits'.format(len(sector_order), len(np.unique(c))))
-
-    cmap = cm.get_cmap('rainbow')
-    norm = plt.Normalize(vmin=0, vmax=max(c))
-    lc_comp = LineCollection(segments, norm=norm, cmap=cmap)
-    lc_comp.set_array(c)
-    lc_comp.set_linewidth(4)
-
-    plt.gca().add_collection(lc_comp)
-    ax.set_aspect('equal', 'box')
-    plt.tick_params(labelleft=False, left=False, labelbottom=False, bottom=False)
-
-    cbar = plt.colorbar(mappable=lc_comp, label="Source Race Index", boundaries=np.arange(-0.5, max(c) + 2))
-    cbar.set_ticks(np.arange(0, max(c) + 2))
-
-    
-    # Label start and finish locations
-
-    x_range = max(plt.xlim()) - min(plt.xlim())
-    y_range = max(plt.ylim()) - min(plt.ylim())
-
-    if x_all[0] > x_all[1]:
-        x_offset = -0.05*x_range
-    else:
-        x_offset = 0.05*x_range
-    
-    if y_all[0] > y_all[1]:
-        y_offset = 0.05*y_range
-    else:
-        y_offset = -0.05*y_range
+            x_offset = 0.05*x_range
         
-    plt.annotate('Start', (x_all[0], y_all[0]), (x_all[0] + x_offset, y_all[0] + y_offset), xycoords='data')
+        if y_all[0] > y_all[1]:
+            y_offset = 0.05*y_range
+        else:
+            y_offset = -0.05*y_range
+            
+        plt.annotate('Start', (x_all[0], y_all[0]), (x_all[0] + x_offset, y_all[0] + y_offset), xycoords='data')
 
 
-    if x_all[-2] > x_all[-1]:
-        x_offset = -0.05*x_range
-    else:
-        x_offset = 0.05*x_range
+        if x_all[-2] > x_all[-1]:
+            x_offset = -0.05*x_range
+        else:
+            x_offset = 0.05*x_range
 
-    if y_all[-2] > y_all[-1]:
-        y_offset = -0.05*y_range
-    else:
-        y_offset = 0.05*y_range
-        
-    plt.annotate('Finish', (x_all[-1], y_all[-1]), (x_all[-1] + x_offset, y_all[-1] + y_offset), xycoords='data')
+        if y_all[-2] > y_all[-1]:
+            y_offset = -0.05*y_range
+        else:
+            y_offset = 0.05*y_range
+            
+        plt.annotate('Finish', (x_all[-1], y_all[-1]), (x_all[-1] + x_offset, y_all[-1] + y_offset), xycoords='data')
 
-    plt.tight_layout()
+
+    filename = "combined_tracks.pdf"
+    save_multi_image(filename)
