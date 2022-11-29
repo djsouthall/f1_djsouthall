@@ -65,9 +65,6 @@ def getSectorDistances(session):
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(exc_type, fname, exc_tb.tb_lineno)
             import pdb; pdb.set_trace()
-    
-    print(np.mean(sec12s), ':', sec12s)
-    print(np.mean(sec23s), ':', sec23s)
 
     return np.mean(sec12s), np.mean(sec23s)
 
@@ -98,50 +95,91 @@ def getSectorsForTel(tel, sec12, sec23):
 
     return sectors
 
-
-def getSectorVectors(tel, sectors):
+def getSectorDict(year, limit_sectors=1000, selected_events=None, selected_sectors=None):
     '''
-    Calculates the vectors for each sectors transition.
+    Returns a specialized dictionary of sector points and meta info.
 
     Parameters
     ----------
-    tel : fastf1.core.Telemetry
-        The telemetry of the lap in question.
-    sectors : np.ndarray of ints
-        The sector indicators for each point in the telemetry.
+    year : int
+        The F1 season you wish to pull tracks from.
+    limit_sectors : int
+        The maximum number of sectors to retrieve information for.
+        If selected_events and selected_sectors are not specified then
+        this will randomly select N=limit_sectors sectors from the
+        given season.  If selected_events and selected_sectors are 
+        specified then this will be ignored. 
+    selected_events : np.ndarray of int
+        The events you wish to be included in the dictionary.  Should
+        match the same length and shape as selected_events, with sectors
+        and elements corresponding to single event-sector pairings.
+        This will not handle repeated cases.  These range from 0 to the
+        maximum number of races in the given season.
+    selected_sectors : np.ndarray of int
+        The sectors you wish to be included in the dictionary.  Should
+        match the same length and shape as selected_events, with sectors
+        and elements corresponding to single event-sector pairings.
+        This will not handle repeated cases.  Array contents must all
+        be 1's, 2's, or 3's. 
     
     Returns
     -------
-    vec12 : np.ndarray of floats
-        Normalized vector for transitioning from sector 1 to 2.
-    vec23 : np.ndarray of floats
-        Normalized vector for transitioning from sector 2 to 3.
-    vec31 : np.ndarray of floats
-        Normalized vector for transitioning from sector 3 to 1.
-    '''
-    x = np.array(tel['X'].values)
-    y = np.array(tel['Y'].values)
-    points = np.array([x, y]).T
-
-    s1 = np.where(sectors == 1)[0]
-    s2 = np.where(sectors == 2)[0]
-    s3 = np.where(sectors == 3)[0]
-
-    vec12 = (points[min(s2)] - points[max(s1)])/np.linalg.norm(points[min(s2)] - points[max(s1)])
-    vec23 = (points[min(s3)] - points[max(s2)])/np.linalg.norm(points[min(s3)] - points[max(s2)])
-    vec31 = (points[max(s3)] - points[max(s3)-1])/np.linalg.norm(points[max(s3)] - points[max(s3)-1]) #They lap can overlap, so just using the final vector of the lap.
-    
-    return vec12, vec23, vec31
-
-
-def getSectorDict(year, limit_sectors=1000):
-    '''
-    Returns a specialized dictionary of vectors.
+    sector_dict : dict
+        A dictionary containing meta information about the retrieved
+        sectors.  
+            'sector' : the sector within the event (1,2, or 3)
+            'event_index' : the index of the event (first race = 0)
+            'df_index' : index within fastf1 panadas dataframe
+            'points' : xy coordinates of the track layout
     '''
     schedule = fastf1.get_event_schedule(year=year, include_testing=False)
+    
+    if selected_sectors is not None and selected_events is not None:
+        if len(selected_sectors) == len(selected_events):
+            if np.all(np.isin(selected_sectors , np.arange(3)+1)):
+                if np.all(np.isin(selected_events , np.arange(len(schedule)))):
+                    pass
+                else:
+                    print('Events given not in the expected range.  Must be in:\n', np.arange(len(schedule)))
+                    print('Generating new selected_sectors and selected_events using given limit_sectors instead: limit_sectors = ', limit_sectors)
+                    selected_sectors = None
+                    seleced_events = None
+            else:
+                print('Sectors given not in the sector range.  Must be in:\n', np.arange(3)+1)
+                print('Generating new selected_sectors and selected_events using given limit_sectors instead: limit_sectors = ', limit_sectors)
+                selected_sectors = None
+                seleced_events = None
+        else:
+            print('selected_sectors length and selected_events length do not match.')
+            print('Generating new selected_sectors and selected_events using given limit_sectors instead: limit_sectors = ', limit_sectors)
+            selected_sectors = None
+            selected_events = None
+            
+    if selected_sectors is None and selected_events is None:
+        print('Selecting sectors.')
+        if limit_sectors > len(schedule)*3:
+            limit_sectors = len(schedule)*3
+    
+        all_sectors = np.tile([1,2,3], len(schedule))
+        all_events = np.repeat(np.arange(len(schedule)), 3)
+
+        selected = np.random.choice(np.arange(len(schedule)*3), size=limit_sectors, replace=False)
+
+        selected_sectors = all_sectors[selected]
+        selected_events = all_events[selected]
+    else:
+        limit_sectors = len(selected_sectors)
+        
+    selected_sectors = np.asarray(selected_sectors).flatten()
+    selected_events = np.asarray(selected_events).flatten()
+    
+    print('Using events/sectors: ', list(zip(selected_events, selected_sectors)))
 
     sector_dict = {}
+    
     for event_index, (df_index, event) in enumerate(schedule.iterrows()):
+        if event_index not in selected_events:
+            continue
         session = fastf1.get_session(year, event['OfficialEventName'], 'Q')
         session.load()
         lap = session.laps.pick_fastest()
@@ -153,91 +191,142 @@ def getSectorDict(year, limit_sectors=1000):
         sec12, sec23 = getSectorDistances(session)
         sectors = getSectorsForTel(tel, sec12, sec23)
 
-        vec12, vec23, vec31 = getSectorVectors(tel, sectors)
-
         points = np.array([x, y]).T.reshape(-1, 1, 2)
         segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
         for s in [1,2,3]:
+            if not np.any(np.logical_and(selected_events == event_index, selected_sectors == s)):
+                continue
             sector_index = event_index*3 + s
-            if sector_index > limit_sectors:
-                break
             sector_cut = np.where(sectors == s)[0]
-
-            if s == 1:
-                starting_vector = vec31
-                ending_vector = vec12
-            elif s == 2:
-                starting_vector = vec12
-                ending_vector = vec23
-            elif s == 3:
-                starting_vector = vec23
-                ending_vector = vec31
 
             sector_dict[sector_index] = {
                 'sector' : s,
                 'event_index' : event_index,
                 'df_index' : df_index,
-                'points' : points[sector_cut],
-                'starting_vector' : starting_vector,
-                'ending_vector' : ending_vector,
+                'points' : points[sector_cut]
             }
         
     return sector_dict
 
 
+
 if __name__ == '__main__':
     plt.close('all')
+
     year = 2022
 
-    sector_dict = getSectorDict(year, limit_sectors=12)
+    selected_sectors = None#[1,2,3]#[1,1,1]
+    selected_events = None#[0,0,0]#[0,1,2]
+    limit_sectors = 100
 
-    sector_order = np.random.choice(np.arange(len(sector_dict.keys())), size=len(sector_dict.keys()), replace=False) + 1
-    
+    # Get relevant sector information
+    sector_dict = getSectorDict(year, limit_sectors=limit_sectors, selected_events=selected_events, selected_sectors=selected_sectors)
+
+    # Determine order to append sectors
+    sector_order = np.random.choice(list(sector_dict.keys()), size=len(sector_dict.keys()), replace=False)
+
+    # Loop over sectors, transform and append them to end of track.
     for i, sector_index in enumerate(sector_order):
         #Ignoring rotations right now, but ultimately want to align segments to flow. 
         if i == 0:
-            segments = np.concatenate([sector_dict[sector_index]['points'][:-1], sector_dict[sector_index]['points'][1:]], axis=1)
-            c = np.ones(len(segments))*(sector_dict[sector_index]['event_index'] + 1)
-            end_point = sector_dict[sector_index]['points'][-1]
+            # Initiate coordinates and colors. 
+            x_all = sector_dict[sector_order[i]]['points'][:,:,0] - sector_dict[sector_order[i]]['points'][:,:,0][0] # Align end point to origin
+            y_all = sector_dict[sector_order[i]]['points'][:,:,1] - sector_dict[sector_order[i]]['points'][:,:,1][0] # Align end point to origin
+            c = np.ones(len(sector_dict[sector_order[i]]['points'][:,:,0]))*(sector_dict[sector_index]['event_index'] + 1)
+            
         else:
-            _points = sector_dict[sector_index]['points']
+            # Obtain untransformed new sector coordinates.  
+            x_new = sector_dict[sector_order[i]]['points'][:,:,0] - sector_dict[sector_order[i]]['points'][:,:,0][0] # Align initial point to origin
+            y_new = sector_dict[sector_order[i]]['points'][:,:,1] - sector_dict[sector_order[i]]['points'][:,:,1][0] # Align initial point to origin
+            
+            # Obtain track direction vectors for connecting points
+            old_vector = np.array([x_all[-1] , y_all[-1]]) - np.array([x_all[-2] , y_all[-2]])
+            old_vector = old_vector.flatten()/np.linalg.norm(old_vector)
+            
+            new_vector = np.array([x_new[1] , y_new[1]]) - np.array([x_new[0] , y_new[0]])
+            new_vector = new_vector.flatten()/np.linalg.norm(new_vector)
 
-            #Translate first point to origin
-            _points = _points - _points[0]
-
-            #Rotate each point about origin to align with vector of previous section
-            old_vector =  sector_dict[sector_order[i-1]]['ending_vector']
-            new_vector =  sector_dict[sector_index]['starting_vector']
-            angle_rad = np.arccos(np.dot(old_vector, new_vector))
-
-            print(old_vector)
-            print(new_vector)
-            print('ANGLE {}'.format(np.rad2deg(angle_rad)))
+            # Calculate angle between vectors, calculate rotation matrix values, rotate      
+            angle_rad = np.arctan2( new_vector[0]*old_vector[1] - new_vector[1]*old_vector[0], new_vector[0]*old_vector[0] + new_vector[1]*old_vector[1] )
             cos, sin = np.cos(angle_rad), np.sin(angle_rad)
-            #R = np.array(((cos, -sin), (sin, cos)))
-            points = np.zeros_like(_points).astype(float)
-            points[:,0,0] = cos * _points[:,0,0] - sin * _points[:,0,1]
-            points[:,0,1] = sin * _points[:,0,0] + cos * _points[:,0,1]
 
-            # Move to endpoint of previous sector. 
-            points = points + end_point
+            x_rotated = cos * x_new - sin * y_new + x_all[-1] # Rotate and shift to end of track
+            y_rotated = sin * x_new + cos * y_new + y_all[-1] # Rotate and shift to end of track
 
-            segments = np.vstack((segments, np.concatenate([points[:-1], points[1:]], axis=1)))
-            c = np.append(c, np.ones(len(segments))*(sector_dict[sector_index]['event_index'] + 1))
-            end_point = points[-1]
+            if False:
+                # Sector by sector plotting for debugging.  Shows appending of sectors, and vectors. 
+                fig = plt.figure()
+                
+                plt.plot(x_all, y_all, c='b',label='Previous Sectors')
+                plt.quiver(x_all[-1], y_all[-1], old_vector[0], old_vector[1], color='b', label='Ending Vector for Previous Sectors')
+                
+                plt.plot(x_new + x_all[-1], y_new + y_all[-1], c='g',label='Sector %i'%(sector_order[i]))
+                plt.quiver(x_new[0] + x_all[-1],  y_new[0] + y_all[-1], new_vector[0], new_vector[1], color='g', label='Beginning Vector for Sector %i'%(sector_order[i]))
+                
+                plt.plot(x_rotated, y_rotated, c='r',label='Rotated Sector %i'%(sector_order[i]))
 
+                plt.legend()
+
+                plt.show(fig)
+            
+            # Append
+            x_all = np.append(x_all, x_rotated)
+            y_all = np.append(y_all, y_rotated)
+            c = np.append(c, np.ones(len(sector_dict[sector_order[i]]['points'][:,:,0]))*(sector_dict[sector_index]['event_index'] + 1))
+            
+    # Reshape points for segment calculation.
+    points = np.array([x_all, y_all]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+    # Plot
     fig = plt.figure()
-    cmap = cm.get_cmap('tab20c')
-    lc_comp = LineCollection(segments, norm=plt.Normalize(1, cmap.N+1), cmap=cmap)
+    ax = plt.gca()
+    plt.axis('equal')
+    plt.title('Random Walk Track\n{} Track Sectors Used from {} Unique Circuits'.format(len(sector_order), len(np.unique(c))))
+
+    cmap = cm.get_cmap('rainbow')
+    norm = plt.Normalize(vmin=0, vmax=max(c))
+    lc_comp = LineCollection(segments, norm=norm, cmap=cmap)
     lc_comp.set_array(c)
     lc_comp.set_linewidth(4)
+
     plt.gca().add_collection(lc_comp)
-    plt.axis('equal')
+    ax.set_aspect('equal', 'box')
     plt.tick_params(labelleft=False, left=False, labelbottom=False, bottom=False)
 
-    #Maybe color fill based on % of total track and outline as source track?
+    cbar = plt.colorbar(mappable=lc_comp, label="Source Race Index", boundaries=np.arange(-0.5, max(c) + 2))
+    cbar.set_ticks(np.arange(0, max(c) + 2))
 
-    cbar = plt.colorbar(mappable=lc_comp, label="Source Race", boundaries=np.arange(1, max(c) + 2))
-    # cbar.set_ticks(np.arange(1.5, max(c) + 1.5))
-    # cbar.set_ticklabels(np.arange(1, max(c)+1))
+    
+    # Label start and finish locations
+
+    x_range = max(plt.xlim()) - min(plt.xlim())
+    y_range = max(plt.ylim()) - min(plt.ylim())
+
+    if x_all[0] > x_all[1]:
+        x_offset = -0.05*x_range
+    else:
+        x_offset = 0.05*x_range
+    
+    if y_all[0] > y_all[1]:
+        y_offset = 0.05*y_range
+    else:
+        y_offset = -0.05*y_range
+        
+    plt.annotate('Start', (x_all[0], y_all[0]), (x_all[0] + x_offset, y_all[0] + y_offset), xycoords='data')
+
+
+    if x_all[-2] > x_all[-1]:
+        x_offset = -0.05*x_range
+    else:
+        x_offset = 0.05*x_range
+
+    if y_all[-2] > y_all[-1]:
+        y_offset = -0.05*y_range
+    else:
+        y_offset = 0.05*y_range
+        
+    plt.annotate('Finish', (x_all[-1], y_all[-1]), (x_all[-1] + x_offset, y_all[-1] + y_offset), xycoords='data')
+
+    plt.tight_layout()
