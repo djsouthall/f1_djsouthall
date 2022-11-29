@@ -22,7 +22,8 @@ fastf1.Cache.enable_cache(os.environ['f1-cache'])
 fastf1.plotting.setup_mpl()
 
 import warnings
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 plt.ion()
 

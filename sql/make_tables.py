@@ -12,7 +12,7 @@ Usage:
 You can import the SQLGenerator into your own script and call the
 commands or can run it from a CLI such as ipython (used for example).
 
-> python make_tables.py -u postgres -p password -y "[2022]" -cdb False -db formula1_2022 
+> python make_tables.py -u postgres -p password -y "[2022]" -cdb True -db formula1_2022 
 
 Arguments
 ---------
@@ -59,6 +59,7 @@ import numpy as np
 import pandas as pd
 import warnings
 warnings.filterwarnings("ignore")
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 import psycopg2 as pg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
@@ -131,7 +132,7 @@ class SQLGenerator():
             assert isinstance(obj, str), 'Argument of wrong type!  Expected str recieved {}'.format(type(obj))
         self.db_name = db_name
         self.sql_user = sql_user
-        self._sql_password = sql_password
+        self.__sql_password = sql_password
         
         if disable_cache == False:
             self.enable_cache(path=path)
@@ -218,7 +219,7 @@ class SQLGenerator():
             print('Renaming %s to %s'%(self.db_name, self.db_name.lower()))
             self.db_name = self.db_name.lower()
         try:
-            connection = pg2.connect(host='localhost', port='5432', user=self.sql_user,password=self._sql_password) # Create a connection with PostgreSQL
+            connection = pg2.connect(host='localhost', port='5432', user=self.sql_user,password=self.__sql_password) # Create a connection with PostgreSQL
             print("Database connected")
         except Exception as e:
             raise Exception('Failed to connect to database.\n{}'.format(e))
@@ -268,7 +269,7 @@ class SQLGenerator():
             print('Renaming %s to %s'%(table_name, table_name.lower()))
             table_name = table_name.lower()
         try:
-            connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self._sql_password)
+            connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self.__sql_password)
         except:
             print("Unable to connect to the database") 
 
@@ -309,7 +310,7 @@ class SQLGenerator():
         for obj in (table_name, insert_command_str):
             assert isinstance(obj, str), 'Argument of wrong type!  Expected str recieved {}'.format(type(obj))
         try:
-            connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self._sql_password)
+            connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self.__sql_password)
         except:
             print("Unable to connect to the database") 
 
@@ -428,6 +429,7 @@ class SQLGenerator():
             CREATE TABLE results (
             result_id SERIAL PRIMARY KEY NOT NULL,
             event_id INT REFERENCES events(event_id) NOT NULL,
+            sprint BOOL NOT NULL,
             driver_id INT REFERENCES drivers(driver_id) NOT NULL,
             driver_code VARCHAR(4),
             q1_time INTERVAL,
@@ -440,11 +442,10 @@ class SQLGenerator():
             race_time INTERVAL,
             fastest_lap_time INTERVAL,
             fastest_lap_number INT,
-            UNIQUE(event_id,driver_id)
+            UNIQUE(event_id,driver_id,sprint)
             );
             '''
         self._initiateTable('results', create_table_str)
-
 
     def _populateTeamsTable(self, years):
         '''
@@ -459,7 +460,7 @@ class SQLGenerator():
                 try:
                     for session_type in ['FP1', 'FP2', 'FP3', 'Q', 'Sprint', 'R']:
                         try:
-                            session = fastf1.get_session(year, event['Country'], session_type)
+                            session = fastf1.get_session(year, event['OfficialEventName'], session_type)
                         except Exception as e:
                             continue #Session not in event.
                         driver_info = fastf1.api.driver_info(session.api_path)
@@ -468,7 +469,7 @@ class SQLGenerator():
                             team_color = item['TeamColour']
 
                             try:
-                                connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self._sql_password)
+                                connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self.__sql_password)
                             except:
                                 print("Unable to connect to the database") 
 
@@ -491,7 +492,7 @@ class SQLGenerator():
                             cursor.close()
 
                 except Exception as e:
-                    print('Skipping %s %i due to error:'%(event['Country'], year))
+                    print('Skipping %s %i due to error:'%(event['OfficialEventName'], year))
                     print(e)
                     exc_type, exc_obj, exc_tb = sys.exc_info()
                     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -505,7 +506,7 @@ class SQLGenerator():
         Will only populate using their most recent race entry. 
         '''
         try:
-            connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self._sql_password)
+            connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self.__sql_password)
         except:
             print("Unable to connect to the database")
             return
@@ -522,7 +523,7 @@ class SQLGenerator():
                         # Makes many redundent calls for very few table entries, but to be thorough still checking every 
                         # session for new drivers.  Populating these tables is done infrequently.
                         try:
-                            session = fastf1.get_session(year, event['Country'], session_type)
+                            session = fastf1.get_session(year, event['OfficialEventName'], session_type)
                         except Exception as e:
                             continue #Session not in event.
                         driver_info = fastf1.api.driver_info(session.api_path)
@@ -585,7 +586,7 @@ class SQLGenerator():
 
 
                 except Exception as e:
-                    print('Skipping %s %i due to error:'%(event['Country'], year))
+                    print('Skipping %s %i due to error:'%(event['OfficialEventName'], year))
                     print(e)
                     exc_type, exc_obj, exc_tb = sys.exc_info()
                     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -601,7 +602,7 @@ class SQLGenerator():
         Will populate the country table. 
         '''
         try:
-            connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self._sql_password)
+            connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self.__sql_password)
         except:
             print("Unable to connect to the database") 
             return
@@ -631,7 +632,7 @@ class SQLGenerator():
                         failed = True
 
                 except Exception as e:
-                    print('Skipping %s %i due to error:'%(event['Country'], year))
+                    print('Skipping %s %i due to error:'%(event['OfficialEventName'], year))
                     print(e)
                     exc_type, exc_obj, exc_tb = sys.exc_info()
                     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -647,7 +648,7 @@ class SQLGenerator():
         Will populate the tracks table. 
         '''
         try:
-            connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self._sql_password)
+            connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self.__sql_password)
         except:
             print("Unable to connect to the database")
             return
@@ -678,7 +679,7 @@ class SQLGenerator():
                         failed = True
 
                 except Exception as e:
-                    print('Skipping %s %i due to error:'%(event['Country'], year))
+                    print('Skipping %s %i due to error:'%(event['OfficialEventName'], year))
                     print(e)
                     exc_type, exc_obj, exc_tb = sys.exc_info()
                     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -695,7 +696,7 @@ class SQLGenerator():
         Depends on driver_id, country_id, track_id.   
         '''
         try:
-            connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self._sql_password)
+            connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self.__sql_password)
         except:
             print("Unable to connect to the database")
             return
@@ -739,7 +740,7 @@ class SQLGenerator():
 
 
                 except Exception as e:
-                    print('Skipping %s %i due to error:'%(event['Country'], year))
+                    print('Skipping %s %i due to error:'%(event['OfficialEventName'], year))
                     print(e)
                     exc_type, exc_obj, exc_tb = sys.exc_info()
                     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -756,7 +757,7 @@ class SQLGenerator():
         Will only populate using their most recent race entry. 
         '''
         try:
-            connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self._sql_password)
+            connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self.__sql_password)
         except:
             print("Unable to connect to the database")
             return
@@ -769,11 +770,19 @@ class SQLGenerator():
             for event_index, event in schedule[::-1].iterrows():
                 try:
                     print('Processing results for SQL entry of %s %i:'%(event['OfficialEventName'], year))
-                    qualifying_session = fastf1.get_session(year, event['Country'], 'Q')
+                    qualifying_session = fastf1.get_session(year, event['OfficialEventName'], 'Q')
                     qualifying_session.load()
                     qualifying_results = qualifying_session.results.convert_dtypes()
 
-                    race_session = fastf1.get_session(year, event['Country'], 'R')
+                    if event['EventFormat'] == 'sprint':
+                        sprint = True
+                        sprint_session = fastf1.get_session(year, event['OfficialEventName'], 'S')
+                        sprint_session.load()
+                        sprint_results = sprint_session.results.convert_dtypes()
+                    else:
+                        sprint = False
+
+                    race_session = fastf1.get_session(year, event['OfficialEventName'], 'R')
                     race_session.load()
                     race_results = race_session.results.convert_dtypes()
 
@@ -784,7 +793,7 @@ class SQLGenerator():
                         driver_qualifying_results = qualifying_results.query('Abbreviation == "{}"'.format(driver_code)).squeeze()
                         driver_race_results = race_results.query('Abbreviation == "{}"'.format(driver_code)).squeeze()
                         fastest_lap = race_session.laps.pick_driver(driver_code).pick_fastest()
-                        
+
                         #result_id =  # SERIAL PRIMARY KEY NOT NULL
                         #event_id = (SELECT e.event_id FROM events e WHERE e.race_date = %s)  # event.get_session('R').date.date()
                         #driver_id = (SELECT d.driver_id FROM drivers d WHERE d.driver_code = %s) # driver_code
@@ -834,9 +843,10 @@ class SQLGenerator():
                             fastest_lap_number = None
                         else:
                             fastest_lap_number = int(fastest_lap['LapNumber']) #INT
-
+                    
                         try:
-                            cursor.execute("INSERT INTO results (event_id, driver_id, driver_code, q1_time, q2_time, q3_time, grid_position, race_finish_status, race_finish_position, race_points, race_time, fastest_lap_time, fastest_lap_number) VALUES ( (SELECT e.event_id FROM events e WHERE e.race_date = %s),(SELECT d.driver_id FROM drivers d WHERE d.driver_code = %s),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING", (event.get_session('R').date.date(), driver_code, driver_code, q1_time, q2_time, q3_time, grid_position, race_finish_status, race_finish_position, race_points, race_time, fastest_lap_time, fastest_lap_number))
+                            # NEED TO INCLUDE SPRINT BOOL TO TABLE
+                            cursor.execute("INSERT INTO results (event_id, sprint, driver_id, driver_code, q1_time, q2_time, q3_time, grid_position, race_finish_status, race_finish_position, race_points, race_time, fastest_lap_time, fastest_lap_number) VALUES ( (SELECT e.event_id FROM events e WHERE e.race_date = %s),%s,(SELECT d.driver_id FROM drivers d WHERE d.driver_code = %s),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING", (event.get_session('R').date.date(), False, driver_code, driver_code, q1_time, q2_time, q3_time, grid_position, race_finish_status, race_finish_position, race_points, race_time, fastest_lap_time, fastest_lap_number))
                             failed = False
                         except Exception as e:
                             print("\nError inserting into table:")
@@ -847,10 +857,65 @@ class SQLGenerator():
 
                             failed = True
                             print('event: ', event)
-                            print('Values on error are: ', event.get_session('R').date.date(), driver_code, driver_code, q1_time, q2_time, q3_time, grid_position, race_finish_status, race_finish_position, race_points, race_time, fastest_lap_time, fastest_lap_number)
+                            print('Values on error are: ', event.get_session('R').date.date(), sprint, driver_code, driver_code, q1_time, q2_time, q3_time, grid_position, race_finish_status, race_finish_position, race_points, race_time, fastest_lap_time, fastest_lap_number)
                             import pdb; pdb.set_trace()
 
                         connection.commit() # Makes sure the change is shown in the database
+                        
+                        if sprint:
+                            driver_race_results = sprint_results.query('Abbreviation == "{}"'.format(driver_code)).squeeze()
+                            race_time = driver_race_results['Time'] # INTERVAL
+                            fastest_lap = sprint_session.laps.pick_driver(driver_code).pick_fastest()
+                            
+                            if type(race_time) is pd._libs.tslibs.nattype.NaTType or pd.isnull(race_time):
+                                race_time = None
+    
+                            fastest_lap_time = fastest_lap['LapTime'] # INTERVAL
+                            if type(fastest_lap_time) is pd._libs.tslibs.nattype.NaTType or pd.isnull(fastest_lap_time):
+                                fastest_lap_time = None
+
+                            # Obtain other information
+                            race_finish_status = driver_race_results['Status'] # VARCHAR(64)
+                            
+                            grid_position = driver_race_results['GridPosition']
+                            if np.isnan(grid_position):
+                                grid_position = None
+                            else:
+                                grid_position = int(grid_position) # INT
+                            race_finish_position = driver_race_results['Position']
+                            if np.isnan(race_finish_position):
+                                race_finish_position = None
+                            else:
+                                race_finish_position = int(race_finish_position) # INT
+                            race_points = driver_race_results['Points']
+                            if np.isnan(race_points):
+                                race_points = None
+                            else:
+                                race_points = int(race_points) # INT
+                            
+                            fastest_lap_number = fastest_lap['LapNumber']
+                            if np.isnan(fastest_lap_number):
+                                fastest_lap_number = None
+                            else:
+                                fastest_lap_number = int(fastest_lap['LapNumber']) #INT
+        
+                            try:
+                                # NEED TO INCLUDE SPRINT BOOL TO TABLE
+                                cursor.execute("INSERT INTO results (event_id, sprint, driver_id, driver_code, q1_time, q2_time, q3_time, grid_position, race_finish_status, race_finish_position, race_points, race_time, fastest_lap_time, fastest_lap_number) VALUES ( (SELECT e.event_id FROM events e WHERE e.race_date = %s),%s,(SELECT d.driver_id FROM drivers d WHERE d.driver_code = %s),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING", (event.get_session('R').date.date(), True, driver_code, driver_code, q1_time, q2_time, q3_time, grid_position, race_finish_status, race_finish_position, race_points, race_time, fastest_lap_time, fastest_lap_number))
+                                failed = False
+                            except Exception as e:
+                                print("\nError inserting into table:")
+                                print(e)
+                                exc_type, exc_obj, exc_tb = sys.exc_info()
+                                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                                print(exc_type, fname, exc_tb.tb_lineno)
+
+                                failed = True
+                                print('event: ', event)
+                                print('Values on error are: ', event.get_session('R').date.date(), sprint,driver_code, driver_code, q1_time, q2_time, q3_time, grid_position, race_finish_status, race_finish_position, race_points, race_time, fastest_lap_time, fastest_lap_number)
+                                import pdb; pdb.set_trace()
+
+                            connection.commit() # Makes sure the change is shown in the database
 
                 except Exception as e:
                     print('Skipping %s %i due to error:'%(event['OfficialEventName'], year))
@@ -908,13 +973,13 @@ class Password(argparse.Action):
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("-u", "--username",dest = "sql_user", help="SQL Username", required=True)
-    parser.add_argument("-p", "--password",action=Password, nargs='?', dest = "sql_password", help="SQL Password", required=True)
-    parser.add_argument("-y", "--years", dest = "years", type = lambda y: json.loads(y), help="Years to populate database.  String formatted as comma seperated list wrapped in [].", default="[2022]")
-    parser.add_argument("-db", "--database",dest = "db_name", help="Name of database", default="formula1")
-    parser.add_argument("-cdb", "--create_database",dest = "create_database", type=bool, help="Attempt to create database", default=True)
-    parser.add_argument("-dc", "--disable_cache",dest = "disable_cache", type=bool, help="Disable data cache.", default=False)
-    parser.add_argument("-s", "--cache_storage_location",dest = "cache_path", type=str, help="Location for cached data to be stored.", default='')
+    parser.add_argument("-u", "--username", dest="sql_user", help="SQL Username", required=True)
+    parser.add_argument("-p", "--password", action=Password, nargs='?', dest="sql_password", help="SQL Password", required=True)
+    parser.add_argument("-y", "--years", dest="years", type = lambda y: json.loads(y), help="Years to populate database.  String formatted as comma seperated list wrapped in [].", default="[2022]")
+    parser.add_argument("-db", "--database", dest="db_name", help="Name of database", default="formula1")
+    parser.add_argument("-cdb", "--create_database", dest="create_database", type=bool, help="Attempt to create database", default=True)
+    parser.add_argument("-dc", "--disable_cache", dest="disable_cache", type=bool, help="Disable data cache.", default=False)
+    parser.add_argument("-s", "--cache_storage_location",dest="cache_path", type=str, help="Location for cached data to be stored.", default='')
 
     args = parser.parse_args()
 
