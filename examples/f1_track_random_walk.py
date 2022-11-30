@@ -343,6 +343,5 @@ if __name__ == '__main__':
             
         plt.annotate('Finish', (x_all[-1], y_all[-1]), (x_all[-1] + x_offset, y_all[-1] + y_offset), xycoords='data')
 
-
     filename = "combined_tracks.pdf"
     save_multi_image(filename)
