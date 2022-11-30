@@ -20,7 +20,7 @@ from matplotlib import cm
 
 import fastf1
 import fastf1.plotting
-fastf1.Cache.enable_cache(os.environ['f1-cache'])  
+fastf1.Cache.enable_cache(os.environ['f1_cache'])  
 fastf1.plotting.setup_mpl()
 from matplotlib.backends.backend_pdf import PdfPages
 

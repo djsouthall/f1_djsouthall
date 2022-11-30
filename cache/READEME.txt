@@ -4,7 +4,7 @@ run the commands:
 import fastf1
 fastf1.Cache.enable_cache(PATH_TO_CACHE)  
 
-It is recommended the user set the f1-cache environment variable and then use:
+It is recommended the user set the f1_cache environment variable and then use:
 
 import fastf1
-fastf1.Cache.enable_cache(os.environ['f1-cache'])  
+fastf1.Cache.enable_cache(os.environ['f1_cache'])  
