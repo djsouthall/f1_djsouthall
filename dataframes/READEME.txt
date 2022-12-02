@@ -1,0 +1,2 @@
+This folder is for storing dataframes that are better stored then loaded
+rather than reconstructed each time they are needed.
