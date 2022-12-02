@@ -6,6 +6,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
 import os
+import sys
 
 import fastf1
 import fastf1.plotting
@@ -49,7 +50,8 @@ def formattedLapTelem(session, sample_interval_seconds=0.1, drivers=None, n_samp
         drivers = np.asarray(drivers)[np.isin(drivers, all_drivers)]
 
     # Get relevant laps
-    relevant_laps = session.laps[np.logical_and(session.laps.PitOutTime.isna(), session.laps.PitInTime.isna())] # Getting laps with no pit in or out time. 
+    # relevant_laps = session.laps[np.logical_and(session.laps.PitOutTime.isna(), session.laps.PitInTime.isna())] # Getting laps with no pit in or out time. 
+    relevant_laps = session.laps.pick_wo_box().pick_track_status(status='1', how='equals') # Getting laps with no pit in or out time, and where entire lap is under normal conditions.
     relevant_laps = relevant_laps[np.isin(relevant_laps['Driver'].values, drivers)] # Getting only laps of relevant drivers
 
     # Setup time indexing
@@ -99,6 +101,9 @@ def saveTelemForYear(year, outpath=os.path.join(os.environ['f1_install'], 'dataf
             formatted_telem.to_pickle(os.path.join(outpath, filename))
         except Exception as e:
             print(e)
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(exc_type, fname, exc_tb.tb_lineno)
             
 def loadTelemForYear(year, path=os.path.join(os.environ['f1_install'], 'dataframes'), telem_param='Speed'):
     '''
@@ -116,10 +121,32 @@ def loadTelemForYear(year, path=os.path.join(os.environ['f1_install'], 'datafram
         print('Loading {}'.format(filename))
         try:            
             out[event_index] = {'EventName' : event['EventName'],
-                                telem_param : pd.from_pickle(os.path.join(path, filename))}
+                                telem_param : pd.read_pickle(os.path.join(path, filename))}
         except Exception as e:
             print(e)
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(exc_type, fname, exc_tb.tb_lineno)
     return out
+
+def loadTelemForEvent(event, path=os.path.join(os.environ['f1_install'], 'dataframes'), telem_param='Speed'):
+    '''
+    This will load the data corresponding to a similar call of
+    saveTelemForYear
+    
+    See Also
+    --------
+        saveTelemForYear
+    '''
+    filename = os.path.join(path, '{} {} {}.pkl'.format(telem_param, event['EventName'],event['EventDate'].year).replace(' ', '_'))
+    print('Loading {}'.format(filename))
+    try:            
+        return pd.read_pickle(os.path.join(path, filename))
+    except Exception as e:
+        print(e)
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        print(exc_type, fname, exc_tb.tb_lineno)
 
 if __name__ == '__main__':
     if False:
