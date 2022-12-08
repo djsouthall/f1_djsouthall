@@ -66,7 +66,7 @@ def formattedLapTelem(session, sample_interval_seconds=0.1, drivers=None, n_samp
 
 
     # Setup empty DF
-    formatted_telem = pd.DataFrame(index=time_index, columns=['{}_{}'.format(lap['Driver'], lap['LapNumber']) for lap_index, lap in relevant_laps.iterlaps()])
+    formatted_telem = pd.DataFrame(index=time_index, columns=['{}_{}'.format(lap['Driver'], int(lap['LapNumber'])) for lap_index, lap in relevant_laps.iterlaps()])
 
     print('Cleaning Laps')
 
@@ -76,7 +76,7 @@ def formattedLapTelem(session, sample_interval_seconds=0.1, drivers=None, n_samp
         telem_data = lap.get_telemetry()
         ts = pd.Series(telem_data[telem_param].values, index=telem_data['Time'])
         rs = ts.resample(sample_interval_seconds_str, kind='timestamp').mean().interpolate(method='linear').ewm(span = 2).mean().reindex(time_index) # Smoothed and interpolated series, was also shifting using .shift(-0.5,freq=sample_interval_seconds_str), however I wanted it to start at 0 and it didn't matter.
-        formatted_telem['{}_{}'.format(lap['Driver'], lap['LapNumber'])] = rs
+        formatted_telem['{}_{}'.format(lap['Driver'], int(lap['LapNumber']))] = rs
     return formatted_telem
 
 def saveTelemForYear(year, outpath=os.path.join(os.environ['f1_install'], 'dataframes'), n_samples=2048, sample_interval_seconds=0.1, telem_param='Speed'):
@@ -104,8 +104,46 @@ def saveTelemForYear(year, outpath=os.path.join(os.environ['f1_install'], 'dataf
             exc_type, exc_obj, exc_tb = sys.exc_info()
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(exc_type, fname, exc_tb.tb_lineno)
+
+def loadTelemForYear(year, path=os.path.join(os.environ['f1_install'], 'dataframes'), telem_param='Speed', return_index_key=False):
+    '''
+    This will load the data corresponding to a similar call of
+    saveTelemForYear
+    
+    See Also
+    --------
+        saveTelemForYear
+    '''
+    schedule = fastf1.get_event_schedule(year=year, include_testing=False)
+    index_key = {}
+    for event_index, event in schedule.iterrows():
+        index_key[event_index] = {'EventName' : event['EventName'], 'name' : event['EventName'].replace('Grand Prix','gp').replace(' ','_').lower()}
+        filename = os.path.join(path, '{} {} {}.pkl'.format(telem_param, event['EventName'],event['EventDate'].year).replace(' ', '_'))
+        print('Loading {}'.format(filename))
+        try:            
+            _df = pd.read_pickle(os.path.join(path, filename))
+            _df.columns = [c.replace('_','_{}_'.format(event_index)) for c in _df.columns]
             
-def loadTelemForYear(year, path=os.path.join(os.environ['f1_install'], 'dataframes'), telem_param='Speed'):
+            try:
+                df = df.join(_df)
+            except:
+                df = _df
+        except Exception as e:
+            print(e)
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(exc_type, fname, exc_tb.tb_lineno)
+    
+    # Clean column names:
+    df.columns = ['{}_{}_{}'.format(c.split('_')[0], int(float(c.split('_')[1])), int(float(c.split('_')[2]))) for c in df.columns] # Forcing integers where some might have been decimals. 
+    
+
+    if return_index_key:
+        return df, index_key
+    else:
+        return df
+
+def loadTelemForYearDict(year, path=os.path.join(os.environ['f1_install'], 'dataframes'), telem_param='Speed'):
     '''
     This will load the data corresponding to a similar call of
     saveTelemForYear
