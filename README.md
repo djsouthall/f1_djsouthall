@@ -3,7 +3,7 @@ This repo serves as playground for working with F1 related data.  In particular 
 
 ## Machine Learning
 
-Please check out the Jupyter notebook [guess_track_from_telem](https://github.com/djsouthall/f1_djsouthall/blob/main/ml/guess_track_from_telem.ipynb).  In this notebook I utlize *keras* and *tensorflow* to identify Formula 1 circuits based on speed v.s. time race telemetry.
+Please check out the Jupyter notebooks [guess_track_from_telem](https://github.com/djsouthall/f1_djsouthall/blob/main/ml/guess_track_from_telem.ipynb) and [guess_driver_from_telem](https://github.com/djsouthall/f1_djsouthall/blob/main/ml/guess_driver_from_telem.ipynb).  In these notebooks I utlize *keras* and *tensorflow* to identify Formula 1 circuits and drivers based on speed v.s. time race telemetry.
 
 ## SQL
 
