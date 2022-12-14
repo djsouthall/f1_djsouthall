@@ -22,6 +22,7 @@ At present the identification of tracks based on telemetry is extremely accurate
 [Jupyter Notebook](https://github.com/djsouthall/f1_djsouthall/blob/main/ml/guess_driver_from_telem.ipynb)
 
 Driver identification is much more difficult than track identification, as the subtle differences in driver styles is far smaller than the absolute differences in track layouts.  Because of this the current achieved accuracy for drivers based on traces is only ~90%.  Though this is not perfect, it is remarkable considering the fact that there are 20 drivers accounted for in the model, all driving at the top tier of their sport in relatively similar hardware.  Certainly I would not be able to do this well by eye.  Below is a plot showing some laps that were correctly identified as their driver (each driver is represented by a distinct color), compared to laps that were incorrectly identified.  This plotted sample consists of 20 drivers, and shows how small differences are.
+
 <img src="https://github.com/djsouthall/f1_djsouthall/blob/main/examples/driver_identification/lap_id.svg?raw=true" alt="Sorted Driver Laps" width="1000"/>
 
 
@@ -29,6 +30,14 @@ Driver identification is much more difficult than track identification, as the s
 ## SQL
 
 I have also been playing with the fastf1 tool to scrape other forms of F1 race data and store this data into SQL databases.  Please take a look at [f1_djsouthall/sql/make_tables.py](https://github.com/djsouthall/f1_djsouthall/tree/main/sql/make_tables.py) to see the generation of these SQL databases.  In [f1_djsouthall/sql/example_sql_analysis.py](https://github.com/djsouthall/f1_djsouthall/tree/main/sql/example_sql_analysis.py) I perform a few small analysis examples using those tables.
+
+## Track Appending / Random Walk
+
+I also thought it would be fun to play with generating new tracks by randomly combined sectors from existing tracks.  You can see some of that below:
+
+[Jupyter Notebook](https://github.com/djsouthall/f1_djsouthall/blob/main/examples/track_random_walk.ipynb)
+
+<img src="https://github.com/djsouthall/f1_djsouthall/blob/main/examples/combined_tracks/combined_track_0.svg?raw=true" alt="Example 0" height="400"/> <img src="https://github.com/djsouthall/f1_djsouthall/blob/main/examples/combined_tracks/combined_track_1.svg?raw=true" alt="Example 1" height="400"/> <img src="https://github.com/djsouthall/f1_djsouthall/blob/main/examples/combined_tracks/combined_track_4.svg?raw=true" alt="Example 4" height="400"/>
 
 ## Thanks
 
