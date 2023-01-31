@@ -447,6 +447,28 @@ class SQLGenerator():
             '''
         self._initiateTable('results', create_table_str)
 
+    def _initiateLapsTable(self):
+        '''
+        This will generate a table for all lap times.
+        '''
+
+        create_table_str = '''
+            CREATE TABLE laps (
+            lap_id SERIAL PRIMARY KEY NOT NULL,
+            event_id INT REFERENCES events(event_id) NOT NULL,
+            session_type VARCHAR(64),
+            driver_id INT REFERENCES drivers(driver_id) NOT NULL,
+            driver_code VARCHAR(4),
+            lap_number INT,
+            lap_time INTERVAL,
+            track_status INT,
+            tyre_compound VARCHAR(16),
+            tyre_life INT,
+            UNIQUE(event_id,driver_id,session_type,lap_number)
+            );
+            '''
+        self._initiateTable('laps', create_table_str)
+
     def _populateTeamsTable(self, years):
         '''
         Will populate the teams table for teams present in sessions during the specified years.
@@ -929,6 +951,54 @@ class SQLGenerator():
         connection.close()
         cursor.close()
 
+    def _populateLapsTable(self, years):
+        '''
+        Will populate the laps table for all sessions during the specified years.
+        '''
+        try:
+            connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self.__sql_password)
+        except:
+            print("Unable to connect to the database")
+            return
+        cursor = connection.cursor()
+
+        years = np.sort(years)
+        for year in years[::-1]:
+            #Loop through years in reverse order.  
+            schedule = fastf1.get_event_schedule(year=year, include_testing=False)
+            for event_index, event in schedule[::-1].iterrows():
+                for session_type in ['FP1', 'FP2', 'FP3', 'Q', 'Sprint', 'R']:
+                    try:
+                        session = fastf1.get_session(year, event['OfficialEventName'], session_type)
+                    except Exception as e:
+                        continue #Session not in event.
+                    session.load()
+                    lap_info = session.laps[['LapTime', 'LapNumber','Compound','Driver','TyreLife','TrackStatus']]
+                    lap_info.replace({np.nan: None}, inplace = True)
+
+                    for lap_index, lap in lap_info.iterlaps():
+                        try:
+                            #cursor.execute("INSERT INTO laps (event_id, sprint, driver_id, driver_code, q1_time, q2_time, q3_time, grid_position, race_finish_status, race_finish_position, race_points, race_time, fastest_lap_time, fastest_lap_number) VALUES ( (SELECT e.event_id FROM events e WHERE e.race_date = %s),%s,(SELECT d.driver_id FROM drivers d WHERE d.driver_code = %s),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING", (event.get_session('R').date.date(), True, driver_code, driver_code, q1_time, q2_time, q3_time, grid_position, race_finish_status, race_finish_position, race_points, race_time, fastest_lap_time, fastest_lap_number))
+                            #                                                                                                                                                       event_id,   session,                                          driver_id,  driver_code, lap_number, lap_time
+                            #event_id, session_type, driver_id, driver_code, lap_number, lap_time, track_status, tyre_compound, tyre_life
+                            
+                            cursor.execute("INSERT INTO laps (event_id, session_type, driver_id, driver_code, lap_number, lap_time, track_status, tyre_compound, tyre_life) VALUES ( (SELECT e.event_id FROM events e WHERE e.race_date = %s), %s ,(SELECT d.driver_id FROM drivers d WHERE d.driver_code = %s),%s,%s,%s, %s,%s,%s) ON CONFLICT DO NOTHING", (event.get_session('R').date.date(), session_type, lap['Driver'], lap['Driver'], lap['LapNumber'], lap['LapTime'], lap['TrackStatus'], lap['Compound'], lap['TyreLife']))
+                            #                                                                                                                                                                                                                                                                                               'LapTime', 'LapNumber','Compound','Driver','TyreLife','TrackStatus'
+                            
+                            failed = False
+                        except Exception as e:
+                            print("\nError inserting into table:")
+                            print(e)
+                            exc_type, exc_obj, exc_tb = sys.exc_info()
+                            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                            print(exc_type, fname, exc_tb.tb_lineno)
+
+                    connection.commit() # Makes sure the change is shown in the database
+
+        connection.commit() # Makes sure the change is shown in the database
+        connection.close()
+        cursor.close()
+
             
     def initiateAllTables(self):
         '''
@@ -940,6 +1010,7 @@ class SQLGenerator():
         self._initiateTeamsTable() # Fourth
         self._initiateDriversTable() # Fifth
         self._initiateResultsTable() # Sixth
+        self._initiateLapsTable() # Seventh
     
     def populateAllTables(self, years):
         '''
@@ -957,6 +1028,7 @@ class SQLGenerator():
         self._populateTeamsTable(years) # Fourth
         self._populateDriversTable(years) # Fifth
         self._populateResultsTable(years) # Sixth
+        self._populateLapsTable(years) # Seventh
 
 class Password(argparse.Action):
     '''
@@ -999,3 +1071,6 @@ if __name__ == '__main__':
 
     f1gen.initiateAllTables()
     f1gen.populateAllTables(args.years)
+
+    # f1gen._initiateLapsTable()
+    # f1gen._populateLapsTable(args.years)
