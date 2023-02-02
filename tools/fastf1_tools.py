@@ -17,45 +17,20 @@ import warnings
 warnings.filterwarnings("ignore")
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-def formattedLapTelem(session, sample_interval_seconds=0.1, drivers=None, n_samples=None, telem_param='Speed'):
+def formattedLapTelem(session):
     '''
-    This will obtain the specified telemetry and resample all laps to a
-    consistent length (NaN padded).  This will only include laps which
-    do not have a lap in or lap out time (no pit stopping).
-
-    This has only been tested for speed.
-
-    Laps for the given drivers will be returned.
+    This will obtain the lap data for the specified session.
 
     Parameters
     ----------
-    drivers : list of str, default = None
-        The list of drivers you want to obtain formatted laps for.
-        By default this is None, which will result in ALL drivers within
-        the given session.  This should be a list of driver 'Tla'
-        values, e.g. ['VER', 'HAM']
-    n_samples : int, default = None
-        The desired length of the output array.  If None then this will
-        be calculate as the maximum number necessary to capture all
-        laps adequately.   
+    session : fastf1 session object
+        The session for which you want lap data.
     '''
     session.load()
-
-    # Get driver info ready
-    driver_info = fastf1.api.driver_info(session.api_path)
-    all_drivers = [d['Tla'] for i, d in driver_info.items()]
-    if drivers is None:
-        drivers = all_drivers
-    else:
-        drivers = np.asarray(drivers)[np.isin(drivers, all_drivers)]
-
-    # Get relevant laps
-    # relevant_laps = session.laps.pick_wo_box().pick_track_status(status='1', how='equals') # Getting laps with no pit in or out time, and where entire lap is under normal conditions.
-    # return relevant_laps
     return session.laps
 
 
-def saveTelemForYear(year, outpath=os.path.join(os.environ['f1_install'], 'dataframes'), n_samples=2048, sample_interval_seconds=0.1, telem_param='Speed'):
+def saveTelemForYear(year, outpath=os.path.join(os.environ['f1_install'], 'dataframes'), telem_param='Speed'):
     '''
     This will loop over all of the laps within the year that are not in
     or outlaps (in races) and store the telemetry data in a consistently
@@ -69,7 +44,7 @@ def saveTelemForYear(year, outpath=os.path.join(os.environ['f1_install'], 'dataf
     for event_index, event in schedule.iterrows():
         print('Processing {} for {} {}'.format(telem_param, event['EventName'],event['EventDate'].year))
         session = event.get_session('R')
-        formatted_telem = formattedLapTelem(session, sample_interval_seconds=sample_interval_seconds, drivers=None, n_samples=n_samples, telem_param=telem_param)
+        formatted_telem = formattedLapTelem(session)
         
         filename = os.path.join(outpath, '{} {} {}.pkl'.format(telem_param, event['EventName'],event['EventDate'].year).replace(' ', '_'))
         print('Saving {}'.format(filename))
@@ -178,7 +153,7 @@ def returnTrackStatusDict():
 if __name__ == '__main__':
     if True:
         if False:
-            saveTelemForYear(2022, outpath=os.path.join(os.environ['f1_install'], 'dataframes'), n_samples=2048, sample_interval_seconds=0.1, telem_param='Speed')
+            saveTelemForYear(2022, outpath=os.path.join(os.environ['f1_install'], 'dataframes'), telem_param='Speed')
         else:
             loaded_dataframes = loadTelemForYear(2022, path=os.path.join(os.environ['f1_install'], 'dataframes'), telem_param='Speed')
     else:
