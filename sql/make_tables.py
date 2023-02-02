@@ -103,6 +103,16 @@ class SQLGenerator():
         up externally.
     sql_password : str
         The SQL password for the corresponding username.
+    path : str, optional, default={f1_cache env variable}
+        The path of the f1_cache.  If given the default value (None)
+        then by default the path will attempt to use the 'f1_cache'
+        environment variable.  If this does not exist then it will
+        attempt to use './f1_cache'.  If this does not exist it will
+        generate the folder.  If a path is given then it will
+        utilize that path unless the folder does not exist, in which
+        case an error is raised.
+    disable_cache : bool, optional, default=False
+        Disables caching if True (not recommended).
     '''
     def __init__(self, db_name, sql_user, sql_password, path=None, disable_cache=False):
         '''
@@ -135,11 +145,11 @@ class SQLGenerator():
         self.__sql_password = sql_password
         
         if disable_cache == False:
-            self.enable_cache(path=path)
+            self.enableCache(path=path)
         else:
-            self.disable_cache()
+            self.disableCache()
     
-    def enable_cache(self, path=None):
+    def enableCache(self, path=None):
         '''
         Enables fastf1 data cache.
 
@@ -163,7 +173,7 @@ class SQLGenerator():
             The path that has been set for caching f1 data.
         '''
         if path == None:
-            return self.enable_cache(path=os.environ['f1_cache'])
+            return self.enableCache(path=os.environ['f1_cache'])
         elif path == os.environ['f1_cache']:
             if os.path.exists(path):
                 self.cache_dir = os.environ['f1_cache']
@@ -191,7 +201,7 @@ class SQLGenerator():
 
         return self.cache_dir
 
-    def disable_cache(self):
+    def disableCache(self):
         '''
         Disables fastf1 data cache.
         '''
@@ -199,21 +209,20 @@ class SQLGenerator():
 
     def createDatabase(self, template='template1'):
         '''
-        Given a db_name, this will generate a new database if one of 
+        Using self.db_name, this will generate a new database if one of 
         that db_name does not already exist.  Returns 1 if a new 
-        database has been succesfully generated and 0 if that database 
+        database has been successfully generated and 0 if that database 
         already existed or if there was an error.
 
         Parameters
         ----------
-        db_name : str
-            The db_name of the database to be generated.  Will be forced
-            to lowercase if not given as such.
+        template : str
+            The PostGreSQL template to be sent in database creation.
 
         Returns
         -------
             0 if no new database generated.
-            1 if new database generated succesfully.
+            1 if new database generated successfully.
         '''
         if self.db_name != self.db_name.lower():
             print('Renaming %s to %s'%(self.db_name, self.db_name.lower()))
@@ -381,12 +390,7 @@ class SQLGenerator():
 
     def _initiateTracksTable(self):
         '''
-        This will generate a table called tracks with the columns:
-
-        track_id
-        country
-        country_id
-        location
+        This will generate a table called tracks.
         '''
         create_table_str = '''
             CREATE TABLE tracks (
@@ -402,7 +406,7 @@ class SQLGenerator():
 
     def _initiateEventsTable(self):
         '''
-        This will generate a table called events with the columns:
+        This will generate a table called events.
         '''
         create_table_str = '''
             CREATE TABLE events (
@@ -471,8 +475,9 @@ class SQLGenerator():
 
     def _populateTeamsTable(self, years):
         '''
-        Will populate the teams table for teams present in sessions during the specified years.
-        Will only populate using their most recent race entry. 
+        Will populate the teams table for teams present in sessions 
+        during the specified years.  Will only populate using their most
+        recent race entry. 
         '''
         years = np.sort(years)
         for year in years[::-1]:
@@ -524,8 +529,9 @@ class SQLGenerator():
 
     def _populateDriversTable(self, years):
         '''
-        Will populate the drivers table for teams present in sessions during the specified years.
-        Will only populate using their most recent race entry. 
+        Will populate the drivers table for teams present in sessions
+        during the specified years.  Will only populate using their most
+        recent race entry. 
         '''
         try:
             connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self.__sql_password)
@@ -714,8 +720,8 @@ class SQLGenerator():
 
     def _populateEventsTable(self, years):
         '''
-        Will populate the events table for events present in the specified years.
-        Depends on driver_id, country_id, track_id.   
+        Will populate the events table for events present in the 
+        specified years.  Depends on driver_id, country_id, track_id.   
         '''
         try:
             connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self.__sql_password)
@@ -729,17 +735,11 @@ class SQLGenerator():
             #Loop through years in reverse order.  
             schedule = fastf1.get_event_schedule(year=year, include_testing=False)
             for event_index, event in schedule.iterrows():
-                # event_id # SERIAL PRIMARY KEY NOT NULL,
-                
                 #track_id Requires SELECT matching country AND location
                 country = event['Country']
                 if country in list(known_country_alias.keys()):
                     country = known_country_alias[country]
                 location = event['Location']
-                # (SELECT t.track_id FROM tracks t WHERE t.country = %s AND t.location = %s)
-
-                #country_id Requires SELECT matching country
-                # (SELECT t.country_id FROM tracks t WHERE t.country = %s LIMIT 1)
 
                 #location already called
                 event_name = event['OfficialEventName'] # VARCHAR(1000) NOT NULL,
@@ -775,8 +775,9 @@ class SQLGenerator():
 
     def _populateResultsTable(self, years):
         '''
-        Will populate the drivers table for teams present in sessions during the specified years.
-        Will only populate using their most recent race entry. 
+        Will populate the drivers table for teams present in sessions 
+        during the specified years.  Will only populate using their most
+        recent race entry. 
         '''
         try:
             connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self.__sql_password)
@@ -953,7 +954,8 @@ class SQLGenerator():
 
     def _populateLapsTable(self, years):
         '''
-        Will populate the laps table for all sessions during the specified years.
+        Will populate the laps table for all sessions during the 
+        specified years.
         '''
         try:
             connection = pg2.connect(host='localhost', port='5432', database = self.db_name, user = self.sql_user, password = self.__sql_password)
@@ -978,13 +980,8 @@ class SQLGenerator():
 
                     for lap_index, lap in lap_info.iterlaps():
                         try:
-                            #cursor.execute("INSERT INTO laps (event_id, sprint, driver_id, driver_code, q1_time, q2_time, q3_time, grid_position, race_finish_status, race_finish_position, race_points, race_time, fastest_lap_time, fastest_lap_number) VALUES ( (SELECT e.event_id FROM events e WHERE e.race_date = %s),%s,(SELECT d.driver_id FROM drivers d WHERE d.driver_code = %s),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING", (event.get_session('R').date.date(), True, driver_code, driver_code, q1_time, q2_time, q3_time, grid_position, race_finish_status, race_finish_position, race_points, race_time, fastest_lap_time, fastest_lap_number))
-                            #                                                                                                                                                       event_id,   session,                                          driver_id,  driver_code, lap_number, lap_time
-                            #event_id, session_type, driver_id, driver_code, lap_number, lap_time, track_status, tyre_compound, tyre_life
-                            
                             cursor.execute("INSERT INTO laps (event_id, session_type, driver_id, driver_code, lap_number, lap_time, track_status, tyre_compound, tyre_life) VALUES ( (SELECT e.event_id FROM events e WHERE e.race_date = %s), %s ,(SELECT d.driver_id FROM drivers d WHERE d.driver_code = %s),%s,%s,%s, %s,%s,%s) ON CONFLICT DO NOTHING", (event.get_session('R').date.date(), session_type, lap['Driver'], lap['Driver'], lap['LapNumber'], lap['LapTime'], lap['TrackStatus'], lap['Compound'], lap['TyreLife']))
-                            #                                                                                                                                                                                                                                                                                               'LapTime', 'LapNumber','Compound','Driver','TyreLife','TrackStatus'
-                            
+
                             failed = False
                         except Exception as e:
                             print("\nError inserting into table:")
@@ -1071,6 +1068,3 @@ if __name__ == '__main__':
 
     f1gen.initiateAllTables()
     f1gen.populateAllTables(args.years)
-
-    # f1gen._initiateLapsTable()
-    # f1gen._populateLapsTable(args.years)
