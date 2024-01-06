@@ -70,7 +70,7 @@ if __name__ == '__main__':
     #Load in drivers table of just race winners, listing their results.
 
     
-    # Below are a list of questions that COULD be answered with SQL queries that I need to understand, interpret, and make happen.  I do not currently remember how to do these things with SQL.
+    # Below are a list of questions that COULD be answered with SQL queries but I have not spent the time to do so.
 
     # Return table of race winners with new column containing a list of each of their result finishes.  
 
